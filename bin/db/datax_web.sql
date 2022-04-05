@@ -13,6 +13,8 @@
 
  Date: 15/12/2019 22:27:10
 */
+CREATE DATABASE `datax_web` CHARACTER SET utf8 COLLATE utf8_general_ci;
+USE  `datax_web`;
 
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
