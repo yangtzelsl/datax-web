@@ -127,6 +127,7 @@ public class JobThread extends Thread {
                     ShardingUtil.setShardingVo(new ShardingUtil.ShardingVO(tgParam.getBroadcastIndex(), tgParam.getBroadcastTotal()));
 
                     // execute
+                    // 执行任务
                     JobLogger.log("<br>----------- datax-web job execute start -----------<br>----------- Param:" + tgParam.getExecutorParams());
 
                     if (tgParam.getExecutorTimeout() > 0) {
@@ -134,6 +135,7 @@ public class JobThread extends Thread {
                         Thread futureThread = null;
                         try {
                             final TriggerParam tgParamT = tgParam;
+                            // 如果是datax-web任务，这里调用的就是ExecutorJobHandler.execute()如果是其他类的任务调用的是创建任务时指定的JobHandler.execute()
                             FutureTask<ReturnT<String>> futureTask = new FutureTask<>(() -> handler.execute(tgParamT));
                             futureThread = new Thread(futureTask);
                             futureThread.start();

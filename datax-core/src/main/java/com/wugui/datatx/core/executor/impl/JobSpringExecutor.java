@@ -15,7 +15,8 @@ import java.util.Map;
 
 /**
  * xxl-job executor (for spring)
- *
+ * 实现SmartInitializingSingleton的接口后，当所有单例 bean 都初始化完成以后， Spring的IOC容器会回调该接口的 afterSingletonsInstantiated()方法。
+ * afterSingletonsInstantiated里调用了父类JobExecutor的start方法
  * @author xuxueli 2018-11-01 09:24:52
  */
 public class JobSpringExecutor extends JobExecutor implements ApplicationContextAware, SmartInitializingSingleton, DisposableBean {
@@ -26,13 +27,16 @@ public class JobSpringExecutor extends JobExecutor implements ApplicationContext
     public void afterSingletonsInstantiated() {
 
         // init JobHandler Repository
+        // 遍历所有添加了@JobHandler注解的class，将这些class添加到名为jobHandlerRepository的ConcurrentMap中
         initJobHandlerRepository(applicationContext);
 
         // refresh GlueFactory
+        // 兼容spring-glue
         GlueFactory.refreshInstance(1);
 
 
         // super start
+        // 调用父类的start()
         try {
             super.start();
         } catch (Exception e) {

@@ -69,22 +69,32 @@ public class JobExecutor {
     public void start() throws Exception {
 
         // init logpath
+        // 1.初始化日志。创建执行器日志和glue日志
         JobFileAppender.initLogPath(logPath);
 
         // init invoker, admin-client
+        // 2.将调度中心的ip、端口、accessToken封装成AdminBizClient对象；有几个ip，就封装几个AdminBizClient对象，然后把这些对象都放到adminBizList中
         initAdminBizList(adminAddresses, accessToken);
 
 
         // init JobLogFileCleanThread
+        // 3.启动清理日志线程。默认删除30天以前的日志，隔一天执行一次
         JobLogFileCleanThread.getInstance().start(logRetentionDays);
 
         // init TriggerCallbackThread
+        // 4.初始化回调线程。从队列callBackQueue中获取回调对象HandleCallbackParam；callBackQueue是LinkedBlockingQueue，获取对象的方法是take，所以没有对象时会一直阻塞；当获取到回调对象后，调用doCallback方法；
         TriggerCallbackThread.getInstance().start();
 
         // init ProcessCallbackThread
+        // 5.这里处理过程和4很像，不同的地方在于多了一些关于processId的处理
         ProcessCallbackThread.getInstance().start();
 
         // init executor-server
+        // 6. 获取当前的ip和配置的执行器注册端口，然后以此端口和类中的方法发布为TCP服务端；
+        // 创建完服务后，往所有调度中心发送注册服务的http请求（注册接口是 api/registry）；
+        // 参数内容包括：执行器名称、当前TCP服务端的ip和端口；
+        // 当系统关闭时，还会往所有调度中心发送移除注册的http请求（移除接口是api/registryRemove）；
+        // 这个方法执行完执行器端就启动完成了
         port = port > 0 ? port : NetUtil.findAvailablePort(9999);
         ip = (ip != null && ip.trim().length() > 0) ? ip : IpUtil.getIp();
         initRpcProvider(ip, port, appName, accessToken);
@@ -178,6 +188,7 @@ public class JobExecutor {
         xxlRpcProviderFactory.setServiceRegistryParam(serviceRegistryParam);
 
         // add services
+        // 添加服务
         xxlRpcProviderFactory.addService(ExecutorBiz.class.getName(), null, new ExecutorBizImpl());
 
         // start
@@ -247,8 +258,17 @@ public class JobExecutor {
     // ---------------------- job thread repository ----------------------
     private static ConcurrentMap<Integer, JobThread> jobThreadRepository = new ConcurrentHashMap<Integer, JobThread>();
 
+    /**
+     * 注册任务线程
+     * @param jobId
+     * @param handler
+     * @param removeOldReason
+     * @return
+     */
     public static JobThread registJobThread(int jobId, IJobHandler handler, String removeOldReason) {
+        // 根据任务id和handler创建任务线程
         JobThread newJobThread = new JobThread(jobId, handler);
+        // 启动任务线程
         newJobThread.start();
         logger.info(">>>>>>>>>>> datax-web regist JobThread success, jobId:{}, handler:{}", new Object[]{jobId, handler});
 

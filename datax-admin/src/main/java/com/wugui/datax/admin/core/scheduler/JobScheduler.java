@@ -26,21 +26,27 @@ public class JobScheduler {
 
     public void init() throws Exception {
         // init i18n
+        // 1 初始化页面国际化的工具
         initI18n();
 
         // admin registry monitor run
+        // 2 启动注册监控线程
         JobRegistryMonitorHelper.getInstance().start();
 
         // admin monitor run
+        // 3 启动失败监控线程
         JobFailMonitorHelper.getInstance().start();
 
         // admin trigger pool start
+        // 4 初始化触发线程池，创建快慢线程池
         JobTriggerPoolHelper.toStart();
 
         // admin log report start
+        // 5 启动日志线程
         JobLogReportHelper.getInstance().start();
 
         // start-schedule
+        // 6 启动作业调度器，这个类是主要逻辑.启动一个死循环，不断的遍历任务触发执行。为避免cpu飙升，隔一会睡一会(这里是重点)
         JobScheduleHelper.getInstance().start();
 
         logger.info(">>>>>>>>> init datax-web admin success.");

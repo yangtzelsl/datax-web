@@ -74,7 +74,9 @@ public class JobLogController {
     @ApiOperation("运行日志详情")
     public ReturnT<LogResult> logDetailCat(String executorAddress, long triggerTime, long logId, int fromLineNum) {
         try {
+            // 根据指定地址获取远程服务代理类ExecutorBiz的实例ExecutorBizImpl
             ExecutorBiz executorBiz = JobScheduler.getExecutorBiz(executorAddress);
+            // 调用ExecutorBizImpl.log()
             ReturnT<LogResult> logResult = executorBiz.log(triggerTime, logId, fromLineNum);
 
             // is end

@@ -45,23 +45,29 @@ public class JobTrigger {
      *                              not null: cover job param
      */
     public static void trigger(int jobId, TriggerTypeEnum triggerType, int failRetryCount, String executorShardingParam, String executorParam) {
+        // 根据任务id查询到任务信息
         JobInfo jobInfo = JobAdminConfig.getAdminConfig().getJobInfoMapper().loadById(jobId);
         if (jobInfo == null) {
             logger.warn(">>>>>>>>>>>> trigger fail, jobId invalid，jobId={}", jobId);
             return;
         }
+        // 解密账号密码
         if (GlueTypeEnum.BEAN.getDesc().equals(jobInfo.getGlueType())) {
             //解密账密
             String json = JSONUtils.changeJson(jobInfo.getJobJson(), JSONUtils.decrypt);
             jobInfo.setJobJson(json);
         }
+        // 设置执行参数
         if (StringUtils.isNotBlank(executorParam)) {
             jobInfo.setExecutorParam(executorParam);
         }
+        // 重试次数，如果有值就用该值，否则就用默认值
         int finalFailRetryCount = failRetryCount >= 0 ? failRetryCount : jobInfo.getExecutorFailRetryCount();
+        // 获取执行器信息
         JobGroup group = JobAdminConfig.getAdminConfig().getJobGroupMapper().load(jobInfo.getJobGroup());
 
         // sharding param
+        // 处理分片参数
         int[] shardingParam = null;
         if (executorShardingParam != null) {
             String[] shardingArr = executorShardingParam.split("/");
@@ -71,6 +77,7 @@ public class JobTrigger {
                 shardingParam[1] = Integer.valueOf(shardingArr[1]);
             }
         }
+        // 循环执行器配置的服务地址列表,调用JobTrigger.processTrigger()
         if (ExecutorRouteStrategyEnum.SHARDING_BROADCAST == ExecutorRouteStrategyEnum.match(jobInfo.getExecutorRouteStrategy(), null)
                 && group.getRegistryList() != null && !group.getRegistryList().isEmpty()
                 && shardingParam == null) {
@@ -78,6 +85,7 @@ public class JobTrigger {
                 processTrigger(group, jobInfo, finalFailRetryCount, triggerType, i, group.getRegistryList().size());
             }
         } else {
+            // 非广播模式调用JobTrigger.processTrigger()
             if (shardingParam == null) {
                 shardingParam = new int[]{0, 1};
             }
@@ -108,11 +116,13 @@ public class JobTrigger {
         TriggerParam triggerParam = new TriggerParam();
 
         // param
+        // 设置阻塞策略、路由策略、分片参数
         ExecutorBlockStrategyEnum blockStrategy = ExecutorBlockStrategyEnum.match(jobInfo.getExecutorBlockStrategy(), ExecutorBlockStrategyEnum.SERIAL_EXECUTION);  // block strategy
         ExecutorRouteStrategyEnum executorRouteStrategyEnum = ExecutorRouteStrategyEnum.match(jobInfo.getExecutorRouteStrategy(), null);    // route strategy
         String shardingParam = (ExecutorRouteStrategyEnum.SHARDING_BROADCAST == executorRouteStrategyEnum) ? String.valueOf(index).concat("/").concat(String.valueOf(total)) : null;
 
         // 1、save log-id
+        // 1 保存任务id
         Calendar calendar = Calendar.getInstance();
         calendar.setTime(new Date());
         calendar.set(Calendar.MILLISECOND, 0);
@@ -127,6 +137,7 @@ public class JobTrigger {
         logger.debug(">>>>>>>>>>> datax-web trigger start, jobId:{}", jobLog.getId());
 
         // 2、init trigger-param
+        // 2、初始化触发参数
         triggerParam.setJobId(jobInfo.getId());
         triggerParam.setExecutorHandler(jobInfo.getExecutorHandler());
         triggerParam.setExecutorParams(jobInfo.getExecutorParam());
@@ -142,6 +153,7 @@ public class JobTrigger {
         triggerParam.setJobJson(jobInfo.getJobJson());
 
         //increment parameter
+        // 设置增量参数，id或者时间
         Integer incrementType = jobInfo.getIncrementType();
         if (incrementType != null) {
             triggerParam.setIncrementType(incrementType);
@@ -160,9 +172,11 @@ public class JobTrigger {
             triggerParam.setReplaceParam(jobInfo.getReplaceParam());
         }
         //jvm parameter
+        //jvm参数
         triggerParam.setJvmParam(jobInfo.getJvmParam());
 
         // 3、init address
+        // 3、设置执行器服务地址
         String address = null;
         ReturnT<String> routeAddressResult = null;
         if (group.getRegistryList() != null && !group.getRegistryList().isEmpty()) {
@@ -183,6 +197,7 @@ public class JobTrigger {
         }
 
         // 4、trigger remote executor
+        // 4 调用JobTrigger.runExecutor()方法触发远程执行器执行
         ReturnT<String> triggerResult = null;
         if (address != null) {
             triggerResult = runExecutor(triggerParam, address);
@@ -191,6 +206,7 @@ public class JobTrigger {
         }
 
         // 5、collection trigger info
+        // 5 搜集触发信息
         StringBuffer triggerMsgSb = new StringBuffer();
         triggerMsgSb.append(I18nUtil.getString("jobconf_trigger_type")).append("：").append(triggerType.getTitle());
         triggerMsgSb.append("<br>").append(I18nUtil.getString("jobconf_trigger_admin_adress")).append("：").append(IpUtil.getIp());
@@ -209,6 +225,7 @@ public class JobTrigger {
                 .append((routeAddressResult != null && routeAddressResult.getMsg() != null) ? routeAddressResult.getMsg() + "<br><br>" : "").append(triggerResult.getMsg() != null ? triggerResult.getMsg() : "");
 
         // 6、save log trigger-info
+        // 6 保存日志到日志表
         jobLog.setExecutorAddress(address);
         jobLog.setExecutorHandler(jobInfo.getExecutorHandler());
         jobLog.setExecutorParam(jobInfo.getExecutorParam());
@@ -237,7 +254,9 @@ public class JobTrigger {
     public static ReturnT<String> runExecutor(TriggerParam triggerParam, String address) {
         ReturnT<String> runResult = null;
         try {
+            // 根据地址创建代理类ExecutorBiz实例
             ExecutorBiz executorBiz = JobScheduler.getExecutorBiz(address);
+            // 调用代理类的ExecutorBiz.run()方法
             runResult = executorBiz.run(triggerParam);
         } catch (Exception e) {
             logger.error(">>>>>>>>>>> datax-web trigger error, please check if the executor[{}] is running.", address, e);

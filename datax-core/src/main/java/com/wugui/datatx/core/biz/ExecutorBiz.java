@@ -44,7 +44,7 @@ public interface ExecutorBiz {
 
     /**
      * run
-     *
+     * 调用的执行器启动时发布的http服务，也就是执行器端ExecutorBiz的实现类的ExecutorBizImpl.run()方法
      * @param triggerParam
      * @return
      */

@@ -31,11 +31,16 @@ public class JobAdminConfig implements InitializingBean, DisposableBean {
 
     private JobScheduler xxlJobScheduler;
 
+    /**
+     * 读取配置文件，初始化bean时会自动调用afterPropertiesSet()初始化JobScheduler类
+     * @throws Exception
+     */
     @Override
     public void afterPropertiesSet() throws Exception {
         adminConfig = this;
 
         xxlJobScheduler = new JobScheduler();
+        // 初始化任务调度器
         xxlJobScheduler.init();
     }
 

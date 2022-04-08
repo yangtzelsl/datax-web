@@ -35,14 +35,19 @@ public class JobScheduleHelper {
     private volatile boolean ringThreadToStop = false;
     private volatile static Map<Integer, List<Integer>> ringData = new ConcurrentHashMap<>();
 
+    /**
+     * 调度器真正初始化
+     */
     public void start() {
 
         // schedule thread
+        // 启动一个调度线程
         scheduleThread = new Thread(new Runnable() {
             @Override
             public void run() {
 
                 try {
+                    // 睡大约4秒
                     TimeUnit.MILLISECONDS.sleep(5000 - System.currentTimeMillis() % 1000);
                 } catch (InterruptedException e) {
                     if (!scheduleThreadToStop) {
@@ -52,11 +57,14 @@ public class JobScheduleHelper {
                 logger.info(">>>>>>>>> init datax-web admin scheduler success.");
 
                 // pre-read count: treadpool-size * trigger-qps (each trigger cost 50ms, qps = 1000/50 = 20)
+                // 预读取数量，等于快线程池大小加慢线程池大小的和再乘以20，默认的话是（200+100）*20 = 6000
                 int preReadCount = (JobAdminConfig.getAdminConfig().getTriggerPoolFastMax() + JobAdminConfig.getAdminConfig().getTriggerPoolSlowMax()) * 20;
 
+                //死循环，进程退出时修改变量为true
                 while (!scheduleThreadToStop) {
 
                     // Scan Job
+                    // 从数据库查询job
                     long start = System.currentTimeMillis();
 
                     Connection conn = null;
@@ -70,6 +78,7 @@ public class JobScheduleHelper {
                         connAutoCommit = conn.getAutoCommit();
                         conn.setAutoCommit(false);
 
+                        // 获取一个悲观锁
                         preparedStatement = conn.prepareStatement("select * from job_lock where lock_name = 'schedule_lock' for update");
                         preparedStatement.execute();
 
@@ -77,12 +86,14 @@ public class JobScheduleHelper {
 
                         // 1、pre read
                         long nowTime = System.currentTimeMillis();
+                        // 查询要执行的任务，如何判断要执行呢，即下次执行时间小于等于当前时间+5s
                         List<JobInfo> scheduleList = JobAdminConfig.getAdminConfig().getJobInfoMapper().scheduleJobQuery(nowTime + PRE_READ_MS, preReadCount);
                         if (scheduleList != null && scheduleList.size() > 0) {
                             // 2、push time-ring
                             for (JobInfo jobInfo : scheduleList) {
 
                                 // time-ring jump
+                                // 判断下次执行时间是否小于（nowTime-5s），如果为true说明任务还没到执行时间跳过此次执行，刷新下次执行时间
                                 if (nowTime > jobInfo.getTriggerNextTime() + PRE_READ_MS) {
                                     // 2.1、trigger-expire > 5s：pass && make next-trigger-time
                                     logger.warn(">>>>>>>>>>> datax-web, schedule misfire, jobId = " + jobInfo.getId());
@@ -90,14 +101,17 @@ public class JobScheduleHelper {
                                     // fresh next
                                     refreshNextValidTime(jobInfo, new Date());
 
+                                    // 判断下次执行时间是否刚过去5s内，如果是，将任务添加到触发执行线程池，刷新下次执行时间；计算执行秒数；将秒和任务id添加到ringData；刷新下次执行时间
                                 } else if (nowTime > jobInfo.getTriggerNextTime()) {
                                     // 2.2、trigger-expire < 5s：direct-trigger && make next-trigger-time
 
                                     // 1、trigger
+                                    // 触发任务
                                     JobTriggerPoolHelper.trigger(jobInfo.getId(), TriggerTypeEnum.CRON, -1, null, null);
                                     logger.debug(">>>>>>>>>>> datax-web, schedule push trigger : jobId = " + jobInfo.getId());
 
                                     // 2、fresh next
+                                    // 刷新下次执行时间
                                     refreshNextValidTime(jobInfo, new Date());
 
                                     // next-trigger-time in 5s, pre-read again
@@ -149,6 +163,7 @@ public class JobScheduleHelper {
                     } finally {
 
                         // commit
+                        // 手动提交修改，关闭连接
                         if (conn != null) {
                             try {
                                 conn.commit();
@@ -188,9 +203,11 @@ public class JobScheduleHelper {
 
 
                     // Wait seconds, align second
+                    // 扫描时间超过1秒就不sleep，小于1秒才sleep
                     if (cost < 1000) {  // scan-overtime, not wait
                         try {
                             // pre-read period: success > scan each second; fail > skip this period;
+                            // 如果前面预读成功，睡1秒，预读失败睡大约4秒
                             TimeUnit.MILLISECONDS.sleep((preReadSuc ? 1000 : PRE_READ_MS) - System.currentTimeMillis() % 1000);
                         } catch (InterruptedException e) {
                             if (!scheduleThreadToStop) {
@@ -204,16 +221,19 @@ public class JobScheduleHelper {
                 logger.info(">>>>>>>>>>> datax-web, JobScheduleHelper#scheduleThread stop");
             }
         });
+        // 设置守护进程
         scheduleThread.setDaemon(true);
         scheduleThread.setName("datax-web, admin JobScheduleHelper#scheduleThread");
         scheduleThread.start();
 
 
         // ring thread
+        // 启动处理之前加入到ringData中数据的线程（前面只是保存到ringData，这里是真正开始触发执行）
         ringThread = new Thread(() -> {
 
             // align second
             try {
+                // 睡(0~1)秒
                 TimeUnit.MILLISECONDS.sleep(1000 - System.currentTimeMillis() % 1000);
             } catch (InterruptedException e) {
                 if (!ringThreadToStop) {
@@ -221,12 +241,14 @@ public class JobScheduleHelper {
                 }
             }
 
+            // 死循环，只有程序退出时才修改标志为true
             while (!ringThreadToStop) {
 
                 try {
                     // second data
                     List<Integer> ringItemData = new ArrayList<>();
                     int nowSecond = Calendar.getInstance().get(Calendar.SECOND);   // 避免处理耗时太长，跨过刻度，向前校验一个刻度；
+                    // 这里就是处理之前添加到ringData里的任务；前面存ringData时，key是秒（从1到60），value是由jobid组成的list；每次从ringData里取2秒的数据。
                     for (int i = 0; i < 2; i++) {
                         List<Integer> tmpData = ringData.remove((nowSecond + 60 - i) % 60);
                         if (tmpData != null) {
@@ -240,19 +262,23 @@ public class JobScheduleHelper {
                         // do trigger
                         for (int jobId : ringItemData) {
                             // do trigger
+                            // 依次调用JobTriggerPoolHelper.trigger()触发任务
                             JobTriggerPoolHelper.trigger(jobId, TriggerTypeEnum.CRON, -1, null, null);
                         }
                         // clear
+                        // 执行完后清空列表
                         ringItemData.clear();
                     }
                 } catch (Exception e) {
                     if (!ringThreadToStop) {
+                        // 打印非停止状态下的异常
                         logger.error(">>>>>>>>>>> datax-web, JobScheduleHelper#ringThread error:{}", e);
                     }
                 }
 
                 // next second, align second
                 try {
+                    // 睡(0-1)秒
                     TimeUnit.MILLISECONDS.sleep(1000 - System.currentTimeMillis() % 1000);
                 } catch (InterruptedException e) {
                     if (!ringThreadToStop) {

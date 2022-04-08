@@ -48,10 +48,13 @@ public class ExecutorJobHandler extends IJobHandler {
         String tmpFilePath;
         LogStatistics logStatistics = null;
         //Generate JSON temporary file
+        //生成json临时文件
         tmpFilePath = generateTemJsonFile(trigger.getJobJson());
 
         try {
+            // 构建执行命令
             String[] cmdarrayFinal = buildDataXExecutorCmd(trigger, tmpFilePath,dataXPyPath);
+            // 执行datax任务
             final Process process = Runtime.getRuntime().exec(cmdarrayFinal);
             String prcsId = ProcessUtil.getProcessId(process);
             JobLogger.log("------------------DataX process id: " + prcsId);

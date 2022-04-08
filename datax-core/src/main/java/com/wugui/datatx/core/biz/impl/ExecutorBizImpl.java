@@ -57,8 +57,10 @@ public class ExecutorBizImpl implements ExecutorBiz {
     @Override
     public ReturnT<LogResult> log(long logDateTim, long logId, int fromLineNum) {
         // log filename: logPath/yyyy-MM-dd/9999.log
+        // 生成日志文件名
         String logFileName = JobFileAppender.makeLogFileName(new Date(logDateTim), logId);
 
+        // 调用JobFileAppender.readLog() 一行一行读取文件
         LogResult logResult = JobFileAppender.readLog(logFileName, fromLineNum);
         return new ReturnT<>(logResult);
     }
@@ -72,6 +74,7 @@ public class ExecutorBizImpl implements ExecutorBiz {
 
         // valid：jobHandler + jobThread
         GlueTypeEnum glueTypeEnum = GlueTypeEnum.match(triggerParam.getGlueType());
+        // datax-web调用data使用的是BEAN模式。根据任务参数里executorHandler从ConcurrentMap缓存里获取对应的类。
         if (GlueTypeEnum.BEAN == glueTypeEnum) {
 
             // new jobhandler
@@ -159,6 +162,7 @@ public class ExecutorBizImpl implements ExecutorBiz {
         }
 
         // replace thread (new or exists invalid)
+        // 注册新线程取代旧线程
         if (jobThread == null) {
             jobThread = JobExecutor.registJobThread(triggerParam.getJobId(), jobHandler, removeOldReason);
         }
